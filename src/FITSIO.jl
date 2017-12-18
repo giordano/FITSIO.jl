@@ -3,6 +3,7 @@ isdefined(Base, :__precompile__) && __precompile__()
 module FITSIO
 
 using Compat
+using Printf
 
 export FITS,
        HDU,
@@ -51,17 +52,17 @@ import .Libcfitsio: libcfitsio,
 # HDU Types
 @compat abstract type HDU end
 
-type ImageHDU <: HDU
+mutable struct ImageHDU <: HDU
     fitsfile::FITSFile
     ext::Int
 end
 
-type TableHDU <: HDU
+mutable struct TableHDU <: HDU
     fitsfile::FITSFile
     ext::Int
 end
 
-type ASCIITableHDU <: HDU
+mutable struct ASCIITableHDU <: HDU
     fitsfile::FITSFile
     ext::Int
 end
@@ -100,7 +101,7 @@ supports the following operations:
   ```
 """
 FITS
-type FITS
+mutable struct FITS
     fitsfile::FITSFile
     filename::AbstractString
     mode::AbstractString
@@ -158,7 +159,7 @@ if it was created by `read_header(::HDU)`.  You can, however, write a
 `FITSHeader` to a file using the `write(::FITS, ...)` methods that
 append a new HDU to a file.
 """
-type FITSHeader
+mutable struct FITSHeader
     keys::Vector{String}
     values::Vector{Any}
     comments::Vector{String}

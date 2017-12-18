@@ -1,5 +1,5 @@
 using FITSIO
-using Base.Test
+using Test
 
 @testset "Images" begin
     # Create a FITS instance and loop over supported types.
@@ -76,7 +76,7 @@ end
     ## Binary table
     indata = Dict{String, Array}()
     for (i, T) in enumerate([UInt8, Int8, UInt16, Int16, UInt32, Int32, Int64,
-                             Float32, Float64, Complex64, Complex128])
+                             Float32, Float64, Complex{Float32}, Complex{Float64}])
         indata["col$i"] = T[1:20;]
     end
     i = length(indata) + 1

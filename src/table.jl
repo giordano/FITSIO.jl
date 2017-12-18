@@ -14,25 +14,25 @@
 #     datatype mapping: 40 would map to Culong, which is a 64-bit unsigned
 #     integer on 64-bit UNIX platforms.
 const CFITSIO_COLTYPE = Dict{Int, DataType}()
-for (T, tform, code) in ((UInt8,       'B',  11),
-                         (Int8,        'S',  12),
-                         (Bool,        'L',  14),
-                         (String,      'A',  16),
-                         (UInt16,      'U',  20),
-                         (Int16,       'I',  21),
-                         (UInt32,      'V',  40),
-                         (Int32,       'J',  41),
-                         (Int64,       'K',  81),
-                         (Float32,     'E',  42),
-                         (Float64,     'D',  82),
-                         (Complex64,   'C',  83),
-                         (Complex128,  'M', 163))
+for (T, tform, code) in ((UInt8,            'B',  11),
+                         (Int8,             'S',  12),
+                         (Bool,             'L',  14),
+                         (String,           'A',  16),
+                         (UInt16,           'U',  20),
+                         (Int16,            'I',  21),
+                         (UInt32,           'V',  40),
+                         (Int32,            'J',  41),
+                         (Int64,            'K',  81),
+                         (Float32,          'E',  42),
+                         (Float64,          'D',  82),
+                         (Complex{Float32}, 'C',  83),
+                         (Complex{Float64}, 'M', 163))
     @eval fits_tform_char(::Type{$T}) = $tform
     CFITSIO_COLTYPE[code] = T
 end
 const FITSTableScalar = Union{UInt8, Int8, Bool, UInt16, Int16, UInt32,
-                              Int32, Int64, Float32, Float64, Complex64,
-                              Complex128}
+                              Int32, Int64, Float32, Float64, Complex{Float32},
+                              Complex{Float64}}
 
 # Helper function for reading information about a (binary) table column
 # Returns: (eltype, rowsize, isvariable)
@@ -96,7 +96,7 @@ end
 fits_tdim(A::Array) = (ndims(A) == 1) ? [1] : [size(A, i) for i=1:ndims(A)-1]
 function fits_tdim(A::Array{String})
     n = ndims(A)
-    tdim = Vector{Int}(n)
+    tdim = Vector{Int}(uninitialized, n)
     tdim[1] = maximum(length, A)
     for i=2:n
         tdim[n] = size(A, n-1)
@@ -106,7 +106,8 @@ end
 
 # Helper function for getting fits tform string for given table type
 # and data array.
-fits_tform{T}(::Type{TableHDU}, A::Array{T}) = "$(prod(fits_tdim(A)))$(fits_tform_char(T))"
+fits_tform(::Type{TableHDU}, A::Array{T}) where {T} =
+    "$(prod(fits_tdim(A)))$(fits_tform_char(T))"
 
 # For string arrays with 2+ dimensions, write tform as rAw. Otherwise,
 # cfitsio doesn't recognize that multiple strings should be written to
@@ -115,7 +116,8 @@ fits_tform(::Type{TableHDU}, A::Vector{String}) = "$(maximum(length, A))A"
 fits_tform(::Type{TableHDU}, A::Array{String}) = "$(prod(fits_tdim(A)))A$(maximum(length, A))"
 
 # variable length columns
-fits_tform_v{T<:FITSTableScalar}(::Type{TableHDU}, A::Vector{Vector{T}}) = "1P$(fits_tform_char(T))($(maximum(length(A))))"
+fits_tform_v(::Type{TableHDU}, A::Vector{Vector{T}}) where {T<:FITSTableScalar} =
+    "1P$(fits_tform_char(T))($(maximum(length(A))))"
 fits_tform_v(::Type{TableHDU}, A::Vector{String}) = "1PA($(maximum(length(A))))"
 fits_tform_v(::Type{TableHDU}, A::Vector{Vector}) = error("column data must be a leaf type: e.g., Vector{Vector{Int}}, not Vector{Vector{T}}.")
 fits_tform_v(::Type{TableHDU}, ::Any) = error("variable length columns only supported for arrays of arrays and arrays of String")
@@ -140,8 +142,8 @@ function show(io::IO, hdu::TableHDU)
     ncols = fits_get_num_cols(hdu.fitsfile)
 
     # allocate return arrays for column names & types
-    colnames_in  = [Vector{UInt8}(70) for i=1:ncols]
-    coltforms_in = [Vector{UInt8}(70) for i=1:ncols]
+    colnames_in  = [Vector{UInt8}(uninitialized, 70) for i=1:ncols]
+    coltforms_in = [Vector{UInt8}(uninitialized, 70) for i=1:ncols]
     nrows = Ref{Int64}()
     status = Ref{Cint}(0)
 
@@ -160,8 +162,8 @@ function show(io::IO, hdu::TableHDU)
     coltforms = [unsafe_string(pointer(item)) for item in coltforms_in]
 
     # get some more information for all the columns
-    coltypes    = Vector{String}(ncols)
-    colrowsizes = Vector{String}(ncols)
+    coltypes    = Vector{String}(uninitialized, ncols)
+    colrowsizes = Vector{String}(uninitialized, ncols)
     showlegend = false
     for i in 1:ncols
         T, rowsize, isvariable = fits_get_col_info(hdu.fitsfile, i)
@@ -194,8 +196,8 @@ function show(io::IO, hdu::ASCIITableHDU)
     ncols = fits_get_num_cols(hdu.fitsfile)
 
     # allocate return arrays for column names & types
-    colnames_in  = [Vector{UInt8}(70) for i=1:ncols]
-    coltforms_in = [Vector{UInt8}(70) for i=1:ncols]
+    colnames_in  = [Vector{UInt8}(uninitialized, 70) for i=1:ncols]
+    coltforms_in = [Vector{UInt8}(uninitialized, 70) for i=1:ncols]
     nrows  = Ref{Int64}()
     status = Ref{Cint}(0)
 
@@ -216,7 +218,7 @@ function show(io::IO, hdu::ASCIITableHDU)
     coltforms = [unsafe_string(pointer(item)) for item in coltforms_in]
 
     # Get additional info
-    coltypes = Vector{String}(ncols)
+    coltypes = Vector{String}(uninitialized, ncols)
     for i in 1:ncols
         eqtypecode, repeat, width = fits_get_eqcoltype(hdu.fitsfile, i)
         T = CFITSIO_COLTYPE[eqtypecode]
@@ -236,8 +238,8 @@ end
 # Write a variable length array column of numbers
 # (separate implementation from normal fits_write_col function because
 #  we must make separate calls to `fits_write_col` for each row.)
-function fits_write_var_col{T}(f::FITSFile, colnum::Integer,
-                               data::Vector{Vector{T}})
+function fits_write_var_col(f::FITSFile, colnum::Integer,
+                            data::Vector{Vector{T}}) where {T}
     for i=1:length(data)
         fits_write_col(f, colnum, i, 1, data[i])
     end
@@ -287,7 +289,7 @@ function write_internal(f::FITS, colnames::Vector{String},
     end
 
     # create an array of tform strings (which we will create pointers to)
-    tform_str = Vector{String}(ncols)
+    tform_str = Vector{String}(uninitialized, ncols)
     for i in 1:ncols
         if isvarcol[i]
             tform_str[i] = fits_tform_v(hdutype, coldata[i])
@@ -370,8 +372,8 @@ appending the table extension to it. `data` should be a dictionary
 with ASCIIString keys (giving the column names) and Array values
 (giving data to write to each column). The following types are
 supported in binary tables: `Uint8`, `Int8`, `Uint16`, `Int16`,
-`Uint32`, `Int32`, `Int64`, `Float32`, `Float64`, `Complex64`,
-`Complex128`, `ASCIIString`, `Bool`.
+`Uint32`, `Int32`, `Int64`, `Float32`, `Float64`, `Complex{Float32}`,
+`Complex{Float64}`, `ASCIIString`, `Bool`.
 
 Optional inputs:
 
@@ -410,12 +412,12 @@ end
 # Read a variable length array column of numbers
 # (separate implementation from normal fits_read_col function because
 # the length of each vector must be determined for each row.
-function fits_read_var_col{T}(f::FITSFile, colnum::Integer,
-                              data::Vector{Vector{T}})
+function fits_read_var_col(f::FITSFile, colnum::Integer,
+                           data::Vector{Vector{T}}) where {T}
     nrows = length(data)
     for i=1:nrows
         repeat, offset = fits_read_descript(f, colnum, i)
-        data[i] = Vector{T}(repeat)
+        data[i] = Vector{T}(uninitialized, repeat)
         fits_read_col(f, colnum, i, 1, data[i])
     end
 end
@@ -428,7 +430,7 @@ function fits_read_var_col(f::FITSFile, colnum::Integer, data::Vector{String})
     bufptr = Ref{Ptr{UInt8}}()  # holds a pointer to the current row buffer
     for i=1:length(data)
         repeat, offset = fits_read_descript(f, colnum, i)
-        buffer = Vector{UInt8}(repeat)
+        buffer = Vector{UInt8}(uninitialized, repeat)
         bufptr[] = pointer(buffer)
         ccall((:ffgcvs, libcfitsio), Cint,
               (Ptr{Void}, Cint, Int64, Int64, Int64,
@@ -454,7 +456,7 @@ function read(hdu::ASCIITableHDU, colname::String)
     typecode, repcnt, width = fits_get_eqcoltype(hdu.fitsfile, colnum)
     T = CFITSIO_COLTYPE[typecode]
 
-    result = Vector{T}(nrows)
+    result = Vector{T}(uninitialized, nrows)
     fits_read_col(hdu.fitsfile, colnum, 1, 1, result)
 
     return result

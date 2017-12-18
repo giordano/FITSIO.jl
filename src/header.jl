@@ -9,12 +9,12 @@
 function try_parse_hdrval(::Type{Bool}, s::String)
     if length(s) == 1
         if s[1] == 'T'
-            return Nullable(true)
+            return true
         elseif s[1] == 'F'
-            return Nullable(false)
+            return false
         end
     end
-    return Nullable{Bool}()
+    return nothing
 end
 
 # Note that trailing whitespace is not significant in FITS header
@@ -24,17 +24,17 @@ end
 # TODO: parse '' within the string as a single '.
 function try_parse_hdrval(::Type{String}, s::String)
     if length(s) < 2 || s[1] != '\'' || s[end] != '\''
-        return Nullable{String}()
+        return nothing
     end
 
     i = endof(s) - 1
     while i > 2
         if s[i] != ' '
-            return Nullable(s[2:i])
+            return s[2:i]
         end
         i -= 1
     end
-    return Nullable(s[2:i])
+    return s[2:i]
 end
 
 try_parse_hdrval(::Type{Float64}, s::String) = tryparse(Float64, s)
@@ -42,21 +42,21 @@ try_parse_hdrval(::Type{Int}, s::String) = tryparse(Int, s)
 
 # Try to parse the header value as any type
 function try_parse_hdrval(s::String)
-    length(s) == 0 && return Nullable(nothing)
+    length(s) == 0 && return nothing
 
     nb = try_parse_hdrval(Bool, s)
-    isnull(nb) || return nb
+    nb === nothing || return nb
 
     ns = try_parse_hdrval(String, s)
-    isnull(ns) || return ns
+    ns  === nothing || return ns
 
     ni = try_parse_hdrval(Int, s)
-    isnull(ni) || return ni
+    ni  === nothing || return ni
 
     nf = try_parse_hdrval(Float64, s)
-    isnull(nf) || return nf
+    nf  === nothing || return nf
 
-    return Nullable{Any}()
+    return nothing # FIXME: this shouldn't return the same as the first line.
 end
 
 # functions for displaying header values in show(io, header)
@@ -68,14 +68,14 @@ hdrval_repr(v::Union{AbstractFloat, Integer}) = string(v)
 # (never error)
 function parse_header_val(s::String)
     nval = try_parse_hdrval(s)
-    return isnull(nval) ? s : get(nval)
+    return nval  === nothing ? s : nval
 end
 
-# Try to read the raw keys in order given; returns Nullable.
+# Try to read the raw keys in order given; returns nothing.
 # (null if no key exists or if parsing an existing key is unsuccessful.)
-function fits_try_read_keys{T}(f::FITSFile, ::Type{T}, keys)
+function fits_try_read_keys(f::FITSFile, ::Type{T}, keys) where {T}
     status = Cint[0]
-    value = Vector{UInt8}(71)
+    value = Vector{UInt8}(uninitialized, 71)
     for key in keys
         ccall((:ffgkey, libcfitsio), Cint,
               (Ptr{Void},Ptr{UInt8},Ptr{UInt8},Ptr{UInt8},Ptr{Cint}),
@@ -89,7 +89,7 @@ function fits_try_read_keys{T}(f::FITSFile, ::Type{T}, keys)
             error(fits_get_errstatus(status[1]))
         end
     end
-    return Nullable{T}()
+    return nothing
 end
 
 # Build a string with extension keywords, if present.
@@ -103,10 +103,10 @@ fits_try_read_extver(f::FITSFile) = fits_try_read_keys(f, Int, EXTVER_KEYS)
 function fits_get_ext_info_string(f::FITSFile)
     extname = fits_try_read_extname(f)
     extver = fits_try_read_extver(f)
-    if !isnull(extname) && !isnull(extver)
-        return " (name=$(repr(get(extname))), ver=$(get(extver)))"
-    elseif !isnull(extname)
-        return " (name=$(repr(get(extname))))"
+    if extname !== nothing && extver  !== nothing
+        return " (name=$(repr(extname)), ver=$(extver))"
+    elseif extname  !== nothing
+        return " (name=$(repr(extname)))"
     end
     return ""
 end
@@ -250,17 +250,17 @@ function read_header(hdu::HDU)
 
     # Below, we use a direct call to ffgkyn so that we can keep reusing the
     # same buffers.
-    key = Vector{UInt8}(81)
-    value = Vector{UInt8}(81)
-    comment = Vector{UInt8}(81)
+    key = Vector{UInt8}(uninitialized, 81)
+    value = Vector{UInt8}(uninitialized, 81)
+    comment = Vector{UInt8}(uninitialized, 81)
     status = Cint[0]
 
     nkeys, morekeys = fits_get_hdrspace(hdu.fitsfile)
 
     # Initialize output arrays
-    keys = Vector{String}(nkeys)
-    values = Vector{Any}(nkeys)
-    comments = Vector{String}(nkeys)
+    keys = Vector{String}(uninitialized, nkeys)
+    values = Vector{Any}(uninitialized, nkeys)
+    comments = Vector{String}(uninitialized, nkeys)
     for i=1:nkeys
         ccall((:ffgkyn,libcfitsio), Cint,
               (Ptr{Void},Cint,Ptr{UInt8},Ptr{UInt8},Ptr{UInt8},Ptr{Cint}),
